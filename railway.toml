@@ -1,0 +1,13 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "npm run build && npx serve -s build -l $PORT"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[environments.production.variables]
+REACT_APP_API_URL = "${{BACKEND_URL}}/api"
+REACT_APP_WS_URL = "${{BACKEND_WS_URL}}/ws"
