@@ -1,5 +1,5 @@
 // src/components/TableList.js
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { tableService, gameService, authService, botService } from "../services/apiService";
 
@@ -13,8 +13,6 @@ const TableList = () => {
   const [joinTableId, setJoinTableId] = useState(null);
   const [buyInAmount, setBuyInAmount] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const refreshIntervalRef = useRef(null);
-  const [addingBotToTable, setAddingBotToTable] = useState(null);
   const isAdmin = authService.isAdmin();
 
   useEffect(() => {
@@ -87,16 +85,6 @@ const TableList = () => {
     // Initial load
     fetchTables();
     fetchActiveGames();
-
-    // Set up auto-refresh every 5 seconds
-    refreshIntervalRef.current = setInterval(refreshData, 5000);
-
-    // Cleanup function
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
-    };
   }, []);
 
   if (loading) {
@@ -255,21 +243,6 @@ const TableList = () => {
     setBuyInAmount('');
   };
 
-  const handleAddBotQuick = async (table) => {
-    setAddingBotToTable(table.id);
-    try {
-      // Add a basic bot with minimum buy-in
-      await botService.addBotToTable(table.id, table.min_buy_in, 'BASIC', 'TIGHT_AGGRESSIVE');
-      alert(`✅ Bot added to ${table.name}!`);
-      // Refresh data to show updated player count
-      await refreshDataAfterOperation();
-    } catch (err) {
-      console.error('Error adding bot:', err);
-      alert(`Failed to add bot: ${err.response?.data?.error || err.message}`);
-    } finally {
-      setAddingBotToTable(null);
-    }
-  };
 
   return (
     <div className="table-list">
@@ -367,14 +340,6 @@ const TableList = () => {
                         className="btn btn-success btn-sm join-table-btn"
                       >
                         Join Table
-                      </button>
-                      <button
-                        onClick={() => handleAddBotQuick(table)}
-                        className="btn btn-info btn-sm add-bot-btn"
-                        disabled={addingBotToTable === table.id}
-                        title="Add a basic bot to this table"
-                      >
-                        {addingBotToTable === table.id ? '⏳' : '🤖'} Bot
                       </button>
                       {isAdmin && (
                         <button

@@ -378,9 +378,6 @@ const PokerTable = ({ onConnectionStatusChange }) => {
           } else {
           }
         }
-        
-        // Fetch updated hand history (for future use if needed)
-        await gameService.getHandHistory(id);
       } catch (err) {
         // Silently fail polling errors to avoid spam
         console.warn('Polling update failed:', err);
@@ -503,14 +500,6 @@ const PokerTable = ({ onConnectionStatusChange }) => {
             if (shouldShowPopup || (isSplitPot && !showHandResults)) {
               setCurrentHandResult(newHistoryEntry);
               setShowHandResults(true);
-              
-              // Fetch fresh hand history from database after hand completion
-              gameService.getHandHistory(gameId)
-                .then(freshHistory => {
-                })
-                .catch(error => {
-                  console.error('❌ Failed to fetch fresh hand history:', error);
-                });
             } else {
               if (currentPlayerIsReady) {
               } else if (currentPlayerIsCashedOut) {
