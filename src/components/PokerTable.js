@@ -8,7 +8,7 @@
 // - Betting display positioned near player cards
 // - Game flow management and user interactions
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { gameService, botService } from "../services/apiService";
 import Spinner from "./Spinner";
@@ -30,6 +30,7 @@ const PokerTable = ({ onConnectionStatusChange }) => {
   // URL parameter for game ID and navigation
   const { id } = useParams();
   const navigate = useNavigate();
+
   
   // Utility function to format currency amounts without unnecessary decimals
   const formatCurrency = (amount) => {
@@ -161,30 +162,6 @@ const PokerTable = ({ onConnectionStatusChange }) => {
       try {
         const response = await gameService.getGame(id);
         setGame(response.data);
-        
-        // Fetch hand history for this game
-        try {
-          const historyResponse = await gameService.getHandHistory(id);
-          
-          if (historyResponse.data && historyResponse.data.hand_history) {
-            // Transform backend format to frontend format
-            const formattedHistory = historyResponse.data.hand_history.map(hand => {
-              const winnerInfo = hand.winner_info;
-              const potAmount = winnerInfo?.pot_amount || parseFloat(hand.pot_amount) || 0;
-              
-              return {
-                timestamp: new Date(hand.completed_at).getTime(),
-                winners: winnerInfo?.winners || [],
-                potAmount: potAmount,
-                type: winnerInfo?.type || 'Unknown',
-                handNumber: hand.hand_number
-              };
-            });
-          }
-        } catch (historyErr) {
-          // Don't show error to user, hand history is not critical
-        }
-        
         setLoading(false);
 
         // Connect to WebSocket after getting initial game state with small delay
@@ -218,7 +195,7 @@ const PokerTable = ({ onConnectionStatusChange }) => {
         clearTimeout(messageTimeoutRef.current);
       }
     };
-  }, [id, navigate]);
+  }, [id, navigate, connectWebSocket]);
 
   // Initialize bet slider when component mounts or game state changes
   useEffect(() => {
@@ -252,7 +229,7 @@ const PokerTable = ({ onConnectionStatusChange }) => {
         }
       }
     }
-  }, [game?.current_bet, game?.table?.big_blind, game?.players, userModifiedSlider]);
+  }, [game, game?.current_bet, game?.table?.big_blind, game?.players, userModifiedSlider]);
 
   // Auto-submit pre-action when it becomes player's turn
   useEffect(() => {
@@ -318,7 +295,7 @@ const PokerTable = ({ onConnectionStatusChange }) => {
       // Small delay to ensure UI updates
       setTimeout(executePreAction, 100);
     }
-  }, [game?.current_player, preAction, preActionAmount, game?.current_bet, game?.table?.big_blind, game?.players]);
+  }, [game, game?.current_player, preAction, preActionAmount, game?.current_bet, game?.table?.big_blind, game?.players, handleAction]);
 
   // Poll for game updates every 3 seconds as backup to WebSocket
   useEffect(() => {
@@ -404,7 +381,7 @@ const PokerTable = ({ onConnectionStatusChange }) => {
   };
 
   // Connect to WebSocket for real-time game updates
-  const connectWebSocket = (gameId) => {
+  const connectWebSocket = useCallback((gameId) => {
     // Check if WebSocket is supported
     if (!gameService.isWebSocketSupported()) {
       showMessage("Real-time updates not supported in this browser", "error");
@@ -593,7 +570,7 @@ const PokerTable = ({ onConnectionStatusChange }) => {
       setConnectionStatus("error");
       showMessage("Failed to create WebSocket connection", "error");
     }
-  };
+  }, [navigate, onConnectionStatusChange, showMessage, setConnectionStatus, setGame, setCurrentHandResult, setShowHandResults]);
 
   // Start the poker game
   const handleStartGame = async () => {
@@ -664,7 +641,7 @@ const PokerTable = ({ onConnectionStatusChange }) => {
   };
 
   // Handle player poker actions (fold, call, bet, raise, check)
-  const handleAction = async (actionTypeParam, amountParam = null) => {
+  const handleAction = useCallback(async (actionTypeParam, amountParam = null) => {
     setTakingAction(true);
     
     try {
@@ -713,7 +690,7 @@ const PokerTable = ({ onConnectionStatusChange }) => {
     } finally {
       setTakingAction(false);
     }
-  };
+  }, [id, betAmount, showMessage, setLastBetAmount, setPreAction, setPreActionAmount, setShowBettingInterface, setUserModifiedSlider, setTakingAction, setError, setMessage]);
 
   // Handle player ready for next hand
   const handlePlayerReady = async () => {
