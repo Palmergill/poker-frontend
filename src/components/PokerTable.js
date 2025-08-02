@@ -156,6 +156,22 @@ const PokerTable = ({ onConnectionStatusChange }) => {
     }
   };
 
+  // Display temporary popup messages to user
+  const showMessage = useCallback((text, type = "error", duration = 3000) => {
+    // Clear any existing timeout
+    if (messageTimeoutRef.current) {
+      clearTimeout(messageTimeoutRef.current);
+    }
+    
+    setMessage(text);
+    setMessageType(type);
+    
+    // Auto-hide after duration
+    messageTimeoutRef.current = setTimeout(() => {
+      setMessage(null);
+    }, duration);
+  }, [setMessage, setMessageType]);
+
   // Connect to WebSocket for real-time game updates
   const connectWebSocket = useCallback((gameId) => {
     // Check if WebSocket is supported
@@ -387,7 +403,7 @@ const PokerTable = ({ onConnectionStatusChange }) => {
         clearTimeout(messageTimeoutRef.current);
       }
     };
-  }, [id, navigate, connectWebSocket]);
+  }, [id, navigate, connectWebSocket, showMessage]);
 
   // Initialize bet slider when component mounts or game state changes
   useEffect(() => {
@@ -608,21 +624,6 @@ const PokerTable = ({ onConnectionStatusChange }) => {
     return () => clearInterval(pollInterval);
   }, [id, game, showHandResults]);
 
-  // Display temporary popup messages to user
-  const showMessage = useCallback((text, type = "error", duration = 3000) => {
-    // Clear any existing timeout
-    if (messageTimeoutRef.current) {
-      clearTimeout(messageTimeoutRef.current);
-    }
-    
-    setMessage(text);
-    setMessageType(type);
-    
-    // Auto-hide after duration
-    messageTimeoutRef.current = setTimeout(() => {
-      setMessage(null);
-    }, duration);
-  }, [setMessage, setMessageType]);
 
 
   // Start the poker game
