@@ -3,7 +3,8 @@
 // It also includes a WebSocket connection for real-time game updates.
 import axios from "axios";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000/api";
+// Use production URLs directly since Railway environment variables aren't working
+const API_URL = process.env.REACT_APP_API_URL || "https://poker-backend-production-da44.up.railway.app/api";
 
 // Debug logging to see what URL is being used
 console.log("🔧 DEBUG: Environment variables:");
@@ -188,7 +189,7 @@ const gameService = {
     }
 
     // Construct WebSocket URL
-    const wsBaseUrl = process.env.REACT_APP_WS_URL || "ws://localhost:8000/ws";
+    const wsBaseUrl = process.env.REACT_APP_WS_URL || "wss://poker-backend-production-da44.up.railway.app/ws";
     const wsUrl = `${wsBaseUrl}/game/${gameId}/?token=${token}`;
 
     try {
