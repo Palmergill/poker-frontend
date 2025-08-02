@@ -1,7 +1,7 @@
 // src/components/TableList.js
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { tableService, gameService, authService, botService } from "../services/apiService";
+import { tableService, gameService, authService } from "../services/apiService";
 
 const TableList = () => {
   const [tables, setTables] = useState([]);
@@ -73,13 +73,6 @@ const TableList = () => {
           console.warn("Failed to refresh active games:", err);
         }
       }
-    };
-
-    const refreshData = async () => {
-      await Promise.all([
-        fetchTables(true),
-        fetchActiveGames(true)
-      ]);
     };
 
     // Initial load
