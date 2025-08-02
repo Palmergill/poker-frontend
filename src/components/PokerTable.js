@@ -156,230 +156,6 @@ const PokerTable = ({ onConnectionStatusChange }) => {
     }
   };
 
-  useEffect(() => {
-    // Fetch initial game data and hand history
-    const fetchGame = async () => {
-      try {
-        const response = await gameService.getGame(id);
-        setGame(response.data);
-        setLoading(false);
-
-        // Connect to WebSocket after getting initial game state with small delay
-        setTimeout(() => {
-          connectWebSocket(response.data.id);
-        }, 100); // Small delay to ensure state is set
-      } catch (err) {
-        if (err.response?.status === 404) {
-          showMessage("Game not found. Redirecting to tables...", "info");
-          setTimeout(() => {
-            navigate("/tables");
-          }, 2000);
-        } else {
-          showMessage("Failed to load game", "error");
-        }
-        setLoading(false);
-      }
-    };
-
-    fetchGame();
-
-    // Cleanup function
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.close();
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (messageTimeoutRef.current) {
-        clearTimeout(messageTimeoutRef.current);
-      }
-    };
-  }, [id, navigate, connectWebSocket]);
-
-  // Initialize bet slider when component mounts or game state changes
-  useEffect(() => {
-    if (game && game.table && game.players) {
-      const currentUser = getCurrentUserInfo();
-      if (!currentUser) return;
-      
-      // Find current player without calling findCurrentPlayer function
-      let currentPlayer = null;
-      if (currentUser.id) {
-        currentPlayer = game.players.find(
-          (p) => p.player.user.id === currentUser.id
-        );
-      }
-      if (!currentPlayer && currentUser.username) {
-        currentPlayer = game.players.find(
-          (p) => p.player.user.username === currentUser.username
-        );
-      }
-      
-      if (currentPlayer) {
-        const currentBet = parseFloat(game.current_bet || 0);
-        const minBet = parseFloat(game.table.big_blind || 0);
-        const minRaise = Math.max(currentBet * 2, currentBet + minBet);
-        const initialValue = currentBet === 0 ? minBet : minRaise;
-        
-        // Only reset slider if user hasn't manually modified it
-        if (!userModifiedSlider) {
-          setBetSliderValue(initialValue);
-          setBetAmount(initialValue);
-        }
-      }
-    }
-  }, [game, game?.current_bet, game?.table?.big_blind, game?.players, userModifiedSlider]);
-
-  // Auto-submit pre-action when it becomes player's turn
-  useEffect(() => {
-    if (!game || !game.players) return;
-    
-    const currentUser = getCurrentUserInfo();
-    if (!currentUser) return;
-    
-    // Find current player without calling findCurrentPlayer function
-    let currentPlayer = null;
-    if (currentUser.id) {
-      currentPlayer = game.players.find(
-        (p) => p.player.user.id === currentUser.id
-      );
-    }
-    if (!currentPlayer && currentUser.username) {
-      currentPlayer = game.players.find(
-        (p) => p.player.user.username === currentUser.username
-      );
-    }
-    
-    // Check if it's player's turn without calling isPlayerTurn function
-    const isMyTurn = currentPlayer &&
-      game.current_player &&
-      game.current_player.id === currentPlayer.player.id;
-    
-    if (isMyTurn && preAction && currentPlayer && !currentPlayer.cashed_out) {
-      const executePreAction = async () => {
-        try {
-          // Fix NaN issues with proper validation
-          const currentBet = parseFloat(game.current_bet || 0) || 0;
-          const playerBet = parseFloat(currentPlayer.current_bet || 0) || 0;
-          const canCheck = currentBet === playerBet;
-          const minBet = parseFloat(game.table?.big_blind || 0) || 0;
-          const minRaise = Math.max(currentBet * 2, currentBet + minBet);
-          
-          // Validate pre-action is still valid
-          if (preAction === 'CHECK_FOLD') {
-            if (canCheck) {
-              await handleAction('CHECK');
-            } else {
-              await handleAction('FOLD');
-            }
-          } else if (preAction === 'CALL' && !canCheck) {
-            await handleAction('CALL');
-          } else if (preAction === 'CHECK' && canCheck) {
-            await handleAction('CHECK');
-          } else if (preAction === 'FOLD') {
-            await handleAction('FOLD');
-          } else if (preAction === 'BET' && currentBet === 0 && preActionAmount >= minBet) {
-            await handleAction('BET', preActionAmount);
-          } else if (preAction === 'RAISE' && currentBet > 0 && preActionAmount >= minRaise) {
-            await handleAction('RAISE', preActionAmount);
-          }
-          // Clear pre-action after execution
-          setPreAction(null);
-          setPreActionAmount(0);
-        } catch (error) {
-          console.error('Failed to execute pre-action:', error);
-        }
-      };
-
-      // Small delay to ensure UI updates
-      setTimeout(executePreAction, 100);
-    }
-  }, [game, game?.current_player, preAction, preActionAmount, game?.current_bet, game?.table?.big_blind, game?.players, handleAction]);
-
-  // Poll for game updates every 3 seconds as backup to WebSocket
-  useEffect(() => {
-    if (!game) return; // Don't poll until we have initial game data
-    
-    const pollInterval = setInterval(async () => {
-      try {
-        // Fetch updated game data
-        const response = await gameService.getGame(id);
-        const updatedGame = response.data;
-        setGame(updatedGame);
-        
-        // Check if we need to restore hand results popup after browser refresh
-        // This happens when game phase is WAITING_FOR_PLAYERS but we don't have a popup showing
-        if (updatedGame.phase === 'WAITING_FOR_PLAYERS' && 
-            updatedGame.winner_info && 
-            !showHandResults) {
-          
-          // Check if current player is already ready - if so, don't restore popup
-          const currentUserInfo = getCurrentUserInfo();
-          const currentPlayerGame = updatedGame.players?.find(player => 
-            currentUserInfo && (
-              currentUserInfo.id === player.player.user.id || 
-              currentUserInfo.username === player.player.user.username
-            )
-          );
-          const currentPlayerIsReady = currentPlayerGame?.ready_for_next_hand || false;
-          const currentPlayerIsCashedOut = currentPlayerGame?.cashed_out || false;
-          
-          if (!currentPlayerIsReady && !currentPlayerIsCashedOut) {
-            
-            // Handle winner_info which comes from API as already parsed object
-            let winnerInfo;
-            if (typeof updatedGame.winner_info === 'string') {
-              try {
-                winnerInfo = JSON.parse(updatedGame.winner_info);
-              } catch (e) {
-                console.warn('Failed to parse winner_info as JSON:', e);
-                winnerInfo = {};
-              }
-            } else {
-              // Already an object
-              winnerInfo = updatedGame.winner_info || {};
-            }
-            
-            const restoredHandResult = {
-              timestamp: Date.now(),
-              winners: winnerInfo.winners || [],
-              potAmount: winnerInfo.pot_amount || 0,
-              type: winnerInfo.type || 'Unknown',
-              handNumber: updatedGame.hand_count || 1,
-              allPlayers: updatedGame.players || []
-            };
-            
-            setCurrentHandResult(restoredHandResult);
-            setShowHandResults(true);
-          } else {
-          }
-        }
-      } catch (err) {
-        // Silently fail polling errors to avoid spam
-        console.warn('Polling update failed:', err);
-      }
-    }, 3000); // Poll every 3 seconds
-
-    return () => clearInterval(pollInterval);
-  }, [id, game, showHandResults]);
-
-  // Display temporary popup messages to user
-  const showMessage = (text, type = "error", duration = 3000) => {
-    // Clear any existing timeout
-    if (messageTimeoutRef.current) {
-      clearTimeout(messageTimeoutRef.current);
-    }
-    
-    setMessage(text);
-    setMessageType(type);
-    
-    // Auto-hide after duration
-    messageTimeoutRef.current = setTimeout(() => {
-      setMessage(null);
-    }, duration);
-  };
-
   // Connect to WebSocket for real-time game updates
   const connectWebSocket = useCallback((gameId) => {
     // Check if WebSocket is supported
@@ -570,7 +346,284 @@ const PokerTable = ({ onConnectionStatusChange }) => {
       setConnectionStatus("error");
       showMessage("Failed to create WebSocket connection", "error");
     }
-  }, [navigate, onConnectionStatusChange, showMessage, setConnectionStatus, setGame, setCurrentHandResult, setShowHandResults]);
+  }, [navigate, onConnectionStatusChange, showMessage, setConnectionStatus, setGame, setCurrentHandResult, setShowHandResults, currentHandResult, id, showHandResults]);
+
+  useEffect(() => {
+    // Fetch initial game data and hand history
+    const fetchGame = async () => {
+      try {
+        const response = await gameService.getGame(id);
+        setGame(response.data);
+        setLoading(false);
+
+        // Connect to WebSocket after getting initial game state with small delay
+        setTimeout(() => {
+          connectWebSocket(response.data.id);
+        }, 100); // Small delay to ensure state is set
+      } catch (err) {
+        if (err.response?.status === 404) {
+          showMessage("Game not found. Redirecting to tables...", "info");
+          setTimeout(() => {
+            navigate("/tables");
+          }, 2000);
+        } else {
+          showMessage("Failed to load game", "error");
+        }
+        setLoading(false);
+      }
+    };
+
+    fetchGame();
+
+    // Cleanup function
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (messageTimeoutRef.current) {
+        clearTimeout(messageTimeoutRef.current);
+      }
+    };
+  }, [id, navigate, connectWebSocket]);
+
+  // Initialize bet slider when component mounts or game state changes
+  useEffect(() => {
+    if (game && game.table && game.players) {
+      const currentUser = getCurrentUserInfo();
+      if (!currentUser) return;
+      
+      // Find current player without calling findCurrentPlayer function
+      let currentPlayer = null;
+      if (currentUser.id) {
+        currentPlayer = game.players.find(
+          (p) => p.player.user.id === currentUser.id
+        );
+      }
+      if (!currentPlayer && currentUser.username) {
+        currentPlayer = game.players.find(
+          (p) => p.player.user.username === currentUser.username
+        );
+      }
+      
+      if (currentPlayer) {
+        const currentBet = parseFloat(game.current_bet || 0);
+        const minBet = parseFloat(game.table.big_blind || 0);
+        const minRaise = Math.max(currentBet * 2, currentBet + minBet);
+        const initialValue = currentBet === 0 ? minBet : minRaise;
+        
+        // Only reset slider if user hasn't manually modified it
+        if (!userModifiedSlider) {
+          setBetSliderValue(initialValue);
+          setBetAmount(initialValue);
+        }
+      }
+    }
+  }, [game, game?.current_bet, game?.table?.big_blind, game?.players, userModifiedSlider]);
+
+  // Handle player poker actions (fold, call, bet, raise, check)
+  const handleAction = useCallback(async (actionTypeParam, amountParam = null) => {
+    setTakingAction(true);
+    
+    try {
+      // Validate action type
+      if (!['FOLD', 'CHECK', 'CALL', 'BET', 'RAISE'].includes(actionTypeParam)) {
+        showMessage("Invalid action type", "error");
+        setTakingAction(false);
+        return;
+      }
+
+      const amountToUse = amountParam !== null ? amountParam : betAmount;
+      
+      // Validate amount for betting actions
+      if ((actionTypeParam === 'BET' || actionTypeParam === 'RAISE') && 
+          (isNaN(amountToUse) || amountToUse < 0)) {
+        showMessage("Invalid bet amount", "error");
+        setTakingAction(false);
+        return;
+      }
+      
+      // Store bet amount for "Previous Bet" feature
+      if ((actionTypeParam === 'BET' || actionTypeParam === 'RAISE') && amountToUse > 0) {
+        setLastBetAmount(amountToUse);
+      }
+      
+      // Add a small delay to ensure spinner is visible
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      await gameService.takeAction(id, actionTypeParam, amountToUse);
+      
+      // Clear any pre-actions and close betting interface
+      setPreAction(null);
+      setPreActionAmount(0);
+      setShowBettingInterface(false);
+      setUserModifiedSlider(false); // Reset slider modification flag
+      
+      // Game state will be updated via WebSocket
+      setError(null); // Clear any previous errors
+      setMessage(null); // Clear any popup messages
+    } catch (err) {
+      console.error('handleAction error:', err);
+      showMessage(
+        `${err.response?.data?.error || err.message}`,
+        "error"
+      );
+    } finally {
+      setTakingAction(false);
+    }
+  }, [id, betAmount, showMessage, setLastBetAmount, setPreAction, setPreActionAmount, setShowBettingInterface, setUserModifiedSlider, setTakingAction, setError, setMessage]);
+
+  // Auto-submit pre-action when it becomes player's turn
+  useEffect(() => {
+    if (!game || !game.players) return;
+    
+    const currentUser = getCurrentUserInfo();
+    if (!currentUser) return;
+    
+    // Find current player without calling findCurrentPlayer function
+    let currentPlayer = null;
+    if (currentUser.id) {
+      currentPlayer = game.players.find(
+        (p) => p.player.user.id === currentUser.id
+      );
+    }
+    if (!currentPlayer && currentUser.username) {
+      currentPlayer = game.players.find(
+        (p) => p.player.user.username === currentUser.username
+      );
+    }
+    
+    // Check if it's player's turn without calling isPlayerTurn function
+    const isMyTurn = currentPlayer &&
+      game.current_player &&
+      game.current_player.id === currentPlayer.player.id;
+    
+    if (isMyTurn && preAction && currentPlayer && !currentPlayer.cashed_out) {
+      const executePreAction = async () => {
+        try {
+          // Fix NaN issues with proper validation
+          const currentBet = parseFloat(game.current_bet || 0) || 0;
+          const playerBet = parseFloat(currentPlayer.current_bet || 0) || 0;
+          const canCheck = currentBet === playerBet;
+          const minBet = parseFloat(game.table?.big_blind || 0) || 0;
+          const minRaise = Math.max(currentBet * 2, currentBet + minBet);
+          
+          // Validate pre-action is still valid
+          if (preAction === 'CHECK_FOLD') {
+            if (canCheck) {
+              await handleAction('CHECK');
+            } else {
+              await handleAction('FOLD');
+            }
+          } else if (preAction === 'CALL' && !canCheck) {
+            await handleAction('CALL');
+          } else if (preAction === 'CHECK' && canCheck) {
+            await handleAction('CHECK');
+          } else if (preAction === 'FOLD') {
+            await handleAction('FOLD');
+          } else if (preAction === 'BET' && currentBet === 0 && preActionAmount >= minBet) {
+            await handleAction('BET', preActionAmount);
+          } else if (preAction === 'RAISE' && currentBet > 0 && preActionAmount >= minRaise) {
+            await handleAction('RAISE', preActionAmount);
+          }
+          // Clear pre-action after execution
+          setPreAction(null);
+          setPreActionAmount(0);
+        } catch (error) {
+          console.error('Failed to execute pre-action:', error);
+        }
+      };
+
+      // Small delay to ensure UI updates
+      setTimeout(executePreAction, 100);
+    }
+  }, [game, game?.current_player, preAction, preActionAmount, game?.current_bet, game?.table?.big_blind, game?.players, handleAction]);
+
+  // Poll for game updates every 3 seconds as backup to WebSocket
+  useEffect(() => {
+    if (!game) return; // Don't poll until we have initial game data
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        // Fetch updated game data
+        const response = await gameService.getGame(id);
+        const updatedGame = response.data;
+        setGame(updatedGame);
+        
+        // Check if we need to restore hand results popup after browser refresh
+        // This happens when game phase is WAITING_FOR_PLAYERS but we don't have a popup showing
+        if (updatedGame.phase === 'WAITING_FOR_PLAYERS' && 
+            updatedGame.winner_info && 
+            !showHandResults) {
+          
+          // Check if current player is already ready - if so, don't restore popup
+          const currentUserInfo = getCurrentUserInfo();
+          const currentPlayerGame = updatedGame.players?.find(player => 
+            currentUserInfo && (
+              currentUserInfo.id === player.player.user.id || 
+              currentUserInfo.username === player.player.user.username
+            )
+          );
+          const currentPlayerIsReady = currentPlayerGame?.ready_for_next_hand || false;
+          const currentPlayerIsCashedOut = currentPlayerGame?.cashed_out || false;
+          
+          if (!currentPlayerIsReady && !currentPlayerIsCashedOut) {
+            
+            // Handle winner_info which comes from API as already parsed object
+            let winnerInfo;
+            if (typeof updatedGame.winner_info === 'string') {
+              try {
+                winnerInfo = JSON.parse(updatedGame.winner_info);
+              } catch (e) {
+                console.warn('Failed to parse winner_info as JSON:', e);
+                winnerInfo = {};
+              }
+            } else {
+              // Already an object
+              winnerInfo = updatedGame.winner_info || {};
+            }
+            
+            const restoredHandResult = {
+              timestamp: Date.now(),
+              winners: winnerInfo.winners || [],
+              potAmount: winnerInfo.pot_amount || 0,
+              type: winnerInfo.type || 'Unknown',
+              handNumber: updatedGame.hand_count || 1,
+              allPlayers: updatedGame.players || []
+            };
+            
+            setCurrentHandResult(restoredHandResult);
+            setShowHandResults(true);
+          } else {
+          }
+        }
+      } catch (err) {
+        // Silently fail polling errors to avoid spam
+        console.warn('Polling update failed:', err);
+      }
+    }, 3000); // Poll every 3 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [id, game, showHandResults]);
+
+  // Display temporary popup messages to user
+  const showMessage = useCallback((text, type = "error", duration = 3000) => {
+    // Clear any existing timeout
+    if (messageTimeoutRef.current) {
+      clearTimeout(messageTimeoutRef.current);
+    }
+    
+    setMessage(text);
+    setMessageType(type);
+    
+    // Auto-hide after duration
+    messageTimeoutRef.current = setTimeout(() => {
+      setMessage(null);
+    }, duration);
+  }, [setMessage, setMessageType]);
+
 
   // Start the poker game
   const handleStartGame = async () => {
@@ -640,57 +693,6 @@ const PokerTable = ({ onConnectionStatusChange }) => {
     }
   };
 
-  // Handle player poker actions (fold, call, bet, raise, check)
-  const handleAction = useCallback(async (actionTypeParam, amountParam = null) => {
-    setTakingAction(true);
-    
-    try {
-      // Validate action type
-      if (!['FOLD', 'CHECK', 'CALL', 'BET', 'RAISE'].includes(actionTypeParam)) {
-        showMessage("Invalid action type", "error");
-        setTakingAction(false);
-        return;
-      }
-
-      const amountToUse = amountParam !== null ? amountParam : betAmount;
-      
-      // Validate amount for betting actions
-      if ((actionTypeParam === 'BET' || actionTypeParam === 'RAISE') && 
-          (isNaN(amountToUse) || amountToUse < 0)) {
-        showMessage("Invalid bet amount", "error");
-        setTakingAction(false);
-        return;
-      }
-      
-      // Store bet amount for "Previous Bet" feature
-      if ((actionTypeParam === 'BET' || actionTypeParam === 'RAISE') && amountToUse > 0) {
-        setLastBetAmount(amountToUse);
-      }
-      
-      // Add a small delay to ensure spinner is visible
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      await gameService.takeAction(id, actionTypeParam, amountToUse);
-      
-      // Clear any pre-actions and close betting interface
-      setPreAction(null);
-      setPreActionAmount(0);
-      setShowBettingInterface(false);
-      setUserModifiedSlider(false); // Reset slider modification flag
-      
-      // Game state will be updated via WebSocket
-      setError(null); // Clear any previous errors
-      setMessage(null); // Clear any popup messages
-    } catch (err) {
-      console.error('handleAction error:', err);
-      showMessage(
-        `${err.response?.data?.error || err.message}`,
-        "error"
-      );
-    } finally {
-      setTakingAction(false);
-    }
-  }, [id, betAmount, showMessage, setLastBetAmount, setPreAction, setPreActionAmount, setShowBettingInterface, setUserModifiedSlider, setTakingAction, setError, setMessage]);
 
   // Handle player ready for next hand
   const handlePlayerReady = async () => {
