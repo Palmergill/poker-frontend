@@ -1,10 +1,6 @@
 [build]
 builder = "nixpacks"
 
-[build.env]
-REACT_APP_API_URL = "https://poker-backend-production-da44.up.railway.app/api"
-REACT_APP_WS_URL = "wss://poker-backend-production-da44.up.railway.app/ws"
-
 [deploy]
 startCommand = "npm run build && npx serve -s build -l $PORT"
 healthcheckPath = "/"
@@ -12,6 +8,6 @@ healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
-[environments.production.variables]
+[variables]
 REACT_APP_API_URL = "https://poker-backend-production-da44.up.railway.app/api"
 REACT_APP_WS_URL = "wss://poker-backend-production-da44.up.railway.app/ws"

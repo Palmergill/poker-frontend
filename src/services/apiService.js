@@ -5,6 +5,12 @@ import axios from "axios";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000/api";
 
+// Debug logging to see what URL is being used
+console.log("🔧 DEBUG: Environment variables:");
+console.log("REACT_APP_API_URL:", process.env.REACT_APP_API_URL);
+console.log("REACT_APP_WS_URL:", process.env.REACT_APP_WS_URL);
+console.log("Final API_URL being used:", API_URL);
+
 // Create axios instance with auth token handling
 const apiClient = axios.create({
   baseURL: API_URL,
