@@ -9,5 +9,5 @@ restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
 [environments.production.variables]
-REACT_APP_API_URL = "${{BACKEND_URL}}/api"
-REACT_APP_WS_URL = "${{BACKEND_WS_URL}}/ws"
+REACT_APP_API_URL = "https://poker-backend-production.up.railway.app/api"
+REACT_APP_WS_URL = "wss://poker-backend-production.up.railway.app/ws"
