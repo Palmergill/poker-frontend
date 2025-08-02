@@ -26,7 +26,7 @@ const Register = () => {
     }
 
     try {
-      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+      const API_URL = process.env.REACT_APP_API_URL || 'https://poker-backend-production-da44.up.railway.app/api';
       await axios.post(`${API_URL}/register/`, {
         username,
         email,
